@@ -4,3 +4,4 @@ syntax: regexp
 \.swo$
 \.swp$
 ^winrun4j/
+^install/winrun4j/
