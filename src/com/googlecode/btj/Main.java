@@ -15,11 +15,17 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.Deflater;
+import java.util.zip.ZipOutputStream;
 
-import org.apache.commons.exec.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.commons.cli.PosixParser;
 import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.ExecuteWatchdog;
 import org.apache.commons.io.FileUtils;
+import org.boris.winrun4j.INI;
 
 /**
  * Build tool for Java
@@ -27,12 +33,12 @@ import org.apache.commons.io.FileUtils;
 public class Main {
     private File projectDir;
     private Properties p;
-    private File btjDir;
     private File buildDir;
     private String projectName;
     private String jdkPath;
     private String mainClass;
     private String[] jars;
+    private File btjDir;
 
     /**
      * @param f a file or a directory
@@ -69,16 +75,16 @@ public class Main {
         }
     }
 
-    private void loadSettings() throws BuildException {
+    private void loadSettings(File btjProperties) throws BuildException {
         this.p = new Properties();
         InputStream is;
         try {
-            is = new FileInputStream(new File(projectDir, "btj.properties"));
+            is = new FileInputStream(btjProperties);
             p.load(is);
         } catch (IOException e) {
             throwBuild(e);
         }
-
+        
         jdkPath = p.getProperty("jdk");
         if (jdkPath == null || jdkPath.isEmpty())
             throw new BuildException("jdk setting is not defined");
@@ -95,29 +101,53 @@ public class Main {
         this.jars = jars_.split(";");
 
         this.buildDir = new File(projectDir, "build");
-
-        // TODO: use winrun4j Java property to get the directory of the .exe
-        this.btjDir = new File("C:\\Users\\t\\projects\\btj\\install");
     }
 
     private static void throwBuild(Exception e) throws BuildException {
         throw (BuildException) new BuildException(e.getMessage()).initCause(e);
     }
 
-    private void run(String[] params2) throws BuildException {
+    private void run(String[] params) throws BuildException {
         System.out.println("BTJ 1.2");
 
+        Options options = new Options();
+        Option project = new Option("project", "path to btj.properties");
+        project.setArgs(1);
+        options.addOption(project);
+
+        CommandLineParser parser = new PosixParser();
+        org.apache.commons.cli.CommandLine cmd;
         try {
-            projectDir = new File(".").getAbsoluteFile().getCanonicalFile();
-        } catch (IOException e) {
-            throwInternal(e);
+            cmd = parser.parse(options, params);
+        } catch (ParseException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot parse the command line: " + e.getMessage())
+                    .initCause(e);
         }
 
-        loadSettings();
+        File btjProperties;
+        if (cmd.hasOption("project")) {
+            btjProperties = new File(cmd.getOptionValue("project")).
+                    getAbsoluteFile();
+            projectDir = btjProperties.getParentFile();
+        } else {
+            btjProperties = new File("btj.properties").getAbsoluteFile();
+            projectDir = new File(".");
+        }
 
-        if (params2.length == 0)
+        try {
+            btjDir = new File(INI.getProperty(INI.MODULE_DIR));
+        } catch (UnsatisfiedLinkError e) {
+            btjDir = new File("").getAbsoluteFile();
+        }
+        System.out.println(btjDir);
+        
+        loadSettings(btjProperties);
+
+        String[] freeArgs = cmd.getArgs();
+        if (freeArgs.length == 0)
             build();
-        else if (params2.length == 1 && params2[0].equals("run"))
+        else if (freeArgs.length == 1 && freeArgs[0].equals("run"))
             run_();
         else
             throw new BuildException("Wrong usage");
@@ -136,7 +166,7 @@ public class Main {
         system(cmd, new File(buildDir, "target"));
     }
 
-    private void addToJar(File root, File source, JarOutputStream target)
+    private void addToJar(File root, File source, ZipOutputStream target)
             throws IOException {
         BufferedInputStream in = null;
         try {
@@ -226,8 +256,8 @@ public class Main {
             manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS,
                     mainClass);
             if (cp.length() != 0)
-                manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH,
-                        cp);
+                manifest.getMainAttributes()
+                        .put(Attributes.Name.CLASS_PATH, cp);
 
             JarOutputStream jar = new JarOutputStream(os, manifest);
             try {
@@ -265,11 +295,48 @@ public class Main {
                 }
             }
         }
+
+        String ini = "main.class=" + this.mainClass + "\r\n"
+                + "classpath.1=*.jar\r\n";
+        File iniFile = new File(buildDir, "target\\" + projectName + ".ini");
+        try {
+            FileUtils.write(iniFile, ini);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException("Cannot save " + iniFile
+                    + ": " + e.getMessage()).initCause(e);
+        }
+
+        File from = new File(this.btjDir, 
+                "winrun4j\\bin\\WinRun4Jc.exe");
+        File to = new File(targetDir, projectName + ".exe");
+        try {
+            FileUtils.copyFile(from, to);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException("Cannot copy " + from
+                    + " to " + to + ": " + e.getMessage()).initCause(e);
+        }
+
+        File zipFile = new File(buildDir, projectName + ".zip");
+        try {
+            os = new FileOutputStream(zipFile);
+            ZipOutputStream jar = new ZipOutputStream(os);
+            try {
+                jar.setMethod(JarOutputStream.DEFLATED);
+                jar.setLevel(Deflater.BEST_COMPRESSION);
+                addToJar(targetDir, targetDir, jar);
+            } finally {
+                jar.close();
+            }
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot create the .zip file: " + e.getMessage())
+                    .initCause(e);
+        }
     }
 
     private String join(String[] parts, String delimiter) {
         StringBuilder sb = new StringBuilder();
-        for (String s: parts) {
+        for (String s : parts) {
             if (sb.length() != 0)
                 sb.append(delimiter);
             sb.append(s);
@@ -307,7 +374,8 @@ public class Main {
     private static void system(String line, File workingDirectory)
             throws BuildException {
         System.out.println(line);
-        CommandLine cmdLine = CommandLine.parse(line);
+        org.apache.commons.exec.CommandLine cmdLine = org.apache.commons.exec.CommandLine
+                .parse(line);
         DefaultExecutor executor = new DefaultExecutor();
         executor.setWorkingDirectory(workingDirectory);
         executor.setExitValue(0);
