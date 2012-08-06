@@ -39,6 +39,7 @@ public class Main {
     private String mainClass;
     private String[] jars;
     private File btjDir;
+    private String version;
 
     /**
      * @param f a file or a directory
@@ -84,7 +85,7 @@ public class Main {
         } catch (IOException e) {
             throwBuild(e);
         }
-        
+
         jdkPath = p.getProperty("jdk");
         if (jdkPath == null || jdkPath.isEmpty())
             throw new BuildException("jdk setting is not defined");
@@ -97,6 +98,10 @@ public class Main {
         if (mainClass == null || mainClass.isEmpty())
             throw new BuildException("main.class setting is not defined");
 
+        version = p.getProperty("version");
+        if (version == null || version.isEmpty())
+            throw new BuildException("version setting is not defined");
+
         String jars_ = p.getProperty("jars");
         this.jars = jars_.split(";");
 
@@ -108,7 +113,24 @@ public class Main {
     }
 
     private void run(String[] params) throws BuildException {
-        System.out.println("BTJ 1.2");
+        Properties props = new Properties();
+        InputStream is = getClass().getResourceAsStream("Version");
+        if (is != null) {
+            try {
+                props.load(is);
+            } catch (IOException e) {
+                throwInternal(e);
+            } finally {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                    throwInternal(e);
+                }
+            }
+            System.out.println("btj " + props.getProperty("version"));
+        } else {
+            System.out.println("btj");
+        }
 
         Options options = new Options();
         Option project = new Option("project", "path to btj.properties");
@@ -127,8 +149,8 @@ public class Main {
 
         File btjProperties;
         if (cmd.hasOption("project")) {
-            btjProperties = new File(cmd.getOptionValue("project")).
-                    getAbsoluteFile();
+            btjProperties = new File(cmd.getOptionValue("project"))
+                    .getAbsoluteFile();
             projectDir = btjProperties.getParentFile();
         } else {
             btjProperties = new File("btj.properties").getAbsoluteFile();
@@ -141,7 +163,7 @@ public class Main {
             btjDir = new File("").getAbsoluteFile();
         }
         System.out.println(btjDir);
-        
+
         loadSettings(btjProperties);
 
         String[] freeArgs = cmd.getArgs();
@@ -239,6 +261,17 @@ public class Main {
                             + e.getMessage()).initCause(e);
         }
 
+        String path = mainClass.replace('.', '\\');
+        File versionFile = new File(
+                new File(buildDir, "classes\\" + path).getParentFile(),
+                "Version.properties");
+        try {
+            FileUtils.write(versionFile, "version=" + version + "\r\n");
+        } catch (IOException e) {
+            throw (BuildException) new BuildException("Cannot create the file "
+                    + versionFile + ": " + e.getMessage()).initCause(e);
+        }
+
         File jarFile = new File(targetDir, projectName + ".jar");
         OutputStream os;
         try {
@@ -306,8 +339,7 @@ public class Main {
                     + ": " + e.getMessage()).initCause(e);
         }
 
-        File from = new File(this.btjDir, 
-                "winrun4j\\bin\\WinRun4Jc.exe");
+        File from = new File(this.btjDir, "winrun4j\\bin\\WinRun4Jc.exe");
         File to = new File(targetDir, projectName + ".exe");
         try {
             FileUtils.copyFile(from, to);
