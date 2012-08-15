@@ -5,3 +5,4 @@ syntax: regexp
 \.swp$
 ^winrun4j/
 ^install/winrun4j/
+^example/

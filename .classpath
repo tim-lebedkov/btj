@@ -6,7 +6,6 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/commons-io 2.4"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/commons-cli 1.2"/>
 	<classpathentry kind="lib" path="install/winrun4j/bin/WinRun4J.jar"/>
-	<classpathentry kind="lib" path="C:/Users/t/libs/apache-ivy-2.3.0-rc1/ivy-2.3.0-rc1.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/apache-ivy-2.3.0-rc1/lib/commons-codec-1.2.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/apache-ivy-2.3.0-rc1/lib/commons-httpclient-3.0.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/apache-ivy-2.3.0-rc1/lib/commons-logging-1.0.4.jar"/>

@@ -12,7 +12,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.MissingResourceException;
 import java.util.Properties;
@@ -24,6 +23,14 @@ import java.util.jar.Manifest;
 import java.util.zip.Deflater;
 import java.util.zip.ZipOutputStream;
 
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactoryConfigurationError;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
@@ -33,10 +40,9 @@ import org.apache.commons.cli.PosixParser;
 import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.ExecuteWatchdog;
 import org.apache.commons.io.FileUtils;
-import org.apache.ivy.Ivy;
-import org.apache.ivy.core.report.ArtifactDownloadReport;
-import org.apache.ivy.core.report.ResolveReport;
 import org.boris.winrun4j.INI;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 /**
  * Build tool for Java
@@ -48,7 +54,7 @@ public class Main {
     private String projectName;
     private String jdkPath;
     private String mainClass;
-    private List<String> jars = new ArrayList<>();
+    private List<File> jars = new ArrayList<>();
     private File btjDir;
     private String version;
 
@@ -56,19 +62,12 @@ public class Main {
      * @param f a file or a directory
      * @return newest modification time for a directory, lastModified() for a
      *         file
-     *
-    private static long recursiveLastModified(File f) {
-        long res = f.lastModified();
-        if (f.isDirectory()) {
-            for (File e : f.listFiles()) {
-                long m = recursiveLastModified(e);
-                if (m > res)
-                    res = m;
-            }
-        }
-        return res;
-    }
-    */
+     * 
+     *         private static long recursiveLastModified(File f) { long res =
+     *         f.lastModified(); if (f.isDirectory()) { for (File e :
+     *         f.listFiles()) { long m = recursiveLastModified(e); if (m > res)
+     *         res = m; } } return res; }
+     */
 
     /**
      * Main entry point
@@ -117,16 +116,31 @@ public class Main {
         String jars_ = p.getProperty("jars");
         if (jars_ == null)
             jars_ = "";
+
         this.jars.clear();
-        this.jars.addAll(Arrays.asList(jars_.split(";")));
-        Iterator<String> it = this.jars.iterator();
-        while (it.hasNext()) {
-            String v = it.next();
-            if (v.isEmpty())
-                it.remove();
+        for (String v : Arrays.asList(jars_.split(";"))) {
+            if (!v.isEmpty()) {
+                File f = resolvePath(v);
+                this.jars.add(f);
+            }
         }
 
         this.buildDir = new File(projectDir, "build");
+    }
+
+    private File resolvePath(String v) throws BuildException {
+        File res = new File(v);
+        if (!res.isAbsolute()) {
+            res = new File(this.projectDir, v);
+        }
+        try {
+            res = res.getCanonicalFile();
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot create the canonical version of the path: " +
+                            v + ": " + e.getMessage()).initCause(e);
+        }
+        return res;
     }
 
     private static void throwBuild(Exception e) throws BuildException {
@@ -136,7 +150,8 @@ public class Main {
     private void run(String[] params) throws BuildException {
         String msg = "BTJ";
         try {
-            ResourceBundle rb = ResourceBundle.getBundle("Version");
+            ResourceBundle rb = ResourceBundle
+                    .getBundle("com.googlecode.btj.Version");
             msg += " " + rb.getString("version");
         } catch (MissingResourceException e) {
             // ignore
@@ -171,7 +186,12 @@ public class Main {
                 projectDir = btjProperties.getParentFile();
             } else {
                 btjProperties = new File("btj.properties").getAbsoluteFile();
-                projectDir = new File(".");
+                try {
+                    projectDir = new File(".").getAbsoluteFile()
+                            .getCanonicalFile();
+                } catch (IOException e) {
+                    throwInternal(e);
+                }
             }
 
             try {
@@ -183,19 +203,112 @@ public class Main {
 
             loadSettings(btjProperties);
 
-            if (freeArgs.length == 0 || freeArgs.length == 1 &&
-                    freeArgs[0].equals("package"))
+            if (freeArgs.length == 0)
                 build();
-            else if (freeArgs.length == 1 && freeArgs[0].equals("run"))
-                run_();
-            else if (freeArgs.length == 1 && freeArgs[0].equals("profile"))
-                profile();
-            else if (freeArgs.length == 1 && freeArgs[0].equals("clean"))
-                clean();
-            else if (freeArgs.length == 1 && freeArgs[0].equals("create"))
-                create();
-            else
+            else if (freeArgs.length == 1) {
+                String arg = freeArgs[0];
+                if (arg.equals("package"))
+                    build();
+                else if (arg.equals("run"))
+                    run_();
+                else if (arg.equals("profile"))
+                    profile();
+                else if (arg.equals("clean"))
+                    clean();
+                else if (arg.equals("create"))
+                    create();
+                else if (arg.equals("eclipse"))
+                    eclipse();
+                else
+                    throw new BuildException("Unknown command: " + arg);
+            } else
                 throw new BuildException("Wrong usage");
+        }
+    }
+
+    private void eclipse() throws BuildException {
+        Document d = null;
+        try {
+            d = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                    .newDocumentBuilder().newDocument();
+        } catch (ParserConfigurationException e) {
+            throwInternal(e);
+        }
+        Element classpath = d.createElement("classpath");
+        d.appendChild(classpath);
+
+        Element cpe = d.createElement("classpathentry");
+        cpe.setAttribute("kind", "src");
+        cpe.setAttribute("path", "src");
+        classpath.appendChild(cpe);
+
+        cpe = d.createElement("classpathentry");
+        cpe.setAttribute("kind", "con");
+        cpe.setAttribute(
+                "path",
+                "org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JDK 1.7.0.4");
+        classpath.appendChild(cpe);
+
+        for (File f : jars) {
+            cpe = d.createElement("classpathentry");
+            cpe.setAttribute("kind", "lib");
+            cpe.setAttribute("path", "build/target/lib/" + f.getName());
+
+            /*
+             * if (src != null) { cpe.setAttribute("sourcepath", "build/libsrc/"
+             * + src.getLocalFile().getName()); } ArtifactDownloadReport javadoc
+             * = javadocArtifacts.get(key); if (javadoc != null) { Element
+             * attributes = d.createElement("attributes");
+             * cpe.appendChild(attributes); Element attribute =
+             * d.createElement("attribute"); attributes.appendChild(attribute);
+             * attribute.setAttribute("name", "javadoc_location");
+             * attribute.setAttribute("value", "jar:platform:/resource/" +
+             * this.projectDir.getName() + "/build/libjavadoc/" +
+             * src.getLocalFile().getName() + "!/"); }
+             */
+            classpath.appendChild(cpe);
+        }
+
+        cpe = d.createElement("classpathentry");
+        cpe.setAttribute("kind", "output");
+        cpe.setAttribute("path", "build/classes");
+        classpath.appendChild(cpe);
+
+        File classpathFile = new File(projectDir, ".classpath");
+        try {
+            Transformer t = javax.xml.transform.TransformerFactory
+                    .newInstance().newTransformer();
+            t.transform(new DOMSource(d), new StreamResult(classpathFile));
+        } catch (TransformerConfigurationException
+                | TransformerFactoryConfigurationError e) {
+            throwInternal(e);
+        } catch (TransformerException e) {
+            throw (BuildException) new BuildException("Cannot save " +
+                    classpathFile + ": " + e.getMessage()).initCause(e);
+        }
+
+        String txt = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n" +
+                "<projectDescription>\r\n" +
+                "    <name>" +
+                this.projectName +
+                "</name>\r\n" +
+                "    <comment></comment>\r\n" +
+                "    <projects>\r\n" +
+                "    </projects>\r\n" +
+                "    <buildSpec>\r\n" +
+                "        <buildCommand>\r\n" +
+                "            <name>org.eclipse.jdt.core.javabuilder</name>\r\n" +
+                "            <arguments>\r\n" + "            </arguments>\r\n" +
+                "        </buildCommand>\r\n" + "    </buildSpec>\r\n" +
+                "    <natures>\r\n" +
+                "        <nature>org.eclipse.jdt.core.javanature</nature>\r\n" +
+                "    </natures>\r\n" + "</projectDescription>\r\n";
+        File project = new File(this.projectDir, ".project");
+        try {
+            FileUtils.write(project, txt);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException("Cannot save " + project +
+                    ": " + e.getMessage()).initCause(e);
         }
     }
 
@@ -243,6 +356,7 @@ public class Main {
                 .println("Commands:\r\n"
                         + "  package - compiles and packages the program. This command is run by default if none is specified.\r\n"
                         + "  create - creates a new empty project\r\n"
+                        + "  eclipse - creates/overwrites the .classpath and .project files for Eclipse 4.2 Juno\r\n"
                         + "  run - runs the program\r\n"
                         + "  profile - profiles the CPU usage\r\n"
                         + "  clean - deletes all created files\r\n"
@@ -363,36 +477,17 @@ public class Main {
     }
 
     private void build() throws BuildException {
-        Ivy ivy = Ivy.newInstance();
-        List<File> ivyLibs = new ArrayList<>();
-        try {
-            File ivySettings = new File(this.projectDir, "ivysettings.xml");
-            if (ivySettings.exists())
-                ivy.configure(ivySettings);
-            else
-                ivy.configureDefault();
-            File ivyXML = new File(this.projectDir, "ivy.xml");
-            if (ivyXML.exists()) {
-                ResolveReport rr = ivy.resolve(ivyXML);
-                ArtifactDownloadReport[] adrs = rr.getAllArtifactsReports();
-                for (ArtifactDownloadReport adr: adrs) {
-                    if (adr.getType().equals("jar"))
-                        ivyLibs.add(adr.getLocalFile());
-                }
-            }
-        } catch (java.text.ParseException | IOException e) {
-            throw (BuildException) new BuildException(
-                    "Error resolving dependencies: " + e.getMessage())
-                    .initCause(e);
-        }
-
         File buildClasses = new File(buildDir, "classes");
         if (!buildClasses.exists())
             buildClasses.mkdirs();
 
+        List<String> jars_ = new ArrayList<>();
+        for (File f: this.jars)
+            jars_.add(f.getAbsolutePath());
+            
         String cmd = "\"" + jdkPath + "\\bin\\javac.exe\"";
         if (jars.size() != 0)
-            cmd += " -cp \"" + join(jars, ";") + "\"";
+            cmd += " -cp \"" + join(jars_, ";") + "\"";
         List<String> params = new ArrayList<>();
         buildJavaCFileParams(new File(projectDir, "src"), params);
         cmd += " -d build\\classes " + join(params, " ");
@@ -433,10 +528,8 @@ public class Main {
         try {
             os = new FileOutputStream(jarFile);
             String cp = "";
-            for (String s : jars) {
-                if (cp.length() != 0)
-                    cp += ";";
-                cp += new File(s).getName();
+            for (File f : jars) {
+                cp += f.getName();
             }
 
             Manifest manifest = new Manifest();
@@ -477,8 +570,7 @@ public class Main {
         }
 
         if (this.jars != null) {
-            for (String s : jars) {
-                File from = new File(s);
+            for (File from : jars) {
                 File to = new File(libDir, from.getName());
                 try {
                     FileUtils.copyFile(from, to);
@@ -490,18 +582,24 @@ public class Main {
             }
         }
 
-        // copy Ivy dependencies
-        for (File from: ivyLibs) {
-            File to = new File(libDir, from.getName());
-            try {
-                FileUtils.copyFile(from, to);
-            } catch (IOException e) {
-                throw (BuildException) new BuildException("Cannot copy " +
-                        from + " to " + to + ": " + e.getMessage())
-                        .initCause(e);
-            }
+        File libSrcDir = new File(projectDir, "build\\libsrc");
+        try {
+            FileUtils.forceMkdir(libSrcDir);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot create the directory " + libSrcDir + ": " +
+                            e.getMessage()).initCause(e);
         }
-        
+
+        File libJavadocDir = new File(projectDir, "build\\libjavadoc");
+        try {
+            FileUtils.forceMkdir(libJavadocDir);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot create the directory " + libJavadocDir + ": " +
+                            e.getMessage()).initCause(e);
+        }
+
         String ini = "main.class=" + this.mainClass + "\r\n" +
                 "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
         File iniFile = new File(buildDir, "target\\" + projectName + ".ini");
@@ -539,7 +637,7 @@ public class Main {
         }
     }
 
-    private static void throwInternal(Exception e) {
+    private static void throwInternal(Throwable e) {
         throw (InternalError) new InternalError(e.getMessage()).initCause(e);
     }
 
