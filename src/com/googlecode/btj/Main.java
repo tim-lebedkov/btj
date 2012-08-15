@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.Properties;
 import java.util.ResourceBundle;
@@ -53,10 +54,12 @@ public class Main {
     private File buildDir;
     private String projectName;
     private String jdkPath;
-    private String mainClass;
+    private String mainClass = "example.Main";
+    private String mainPackage = "example";
     private List<File> jars = new ArrayList<>();
     private File btjDir;
     private String version;
+    private ProjectType type = ProjectType.COMMAND_LINE;
 
     /**
      * @param f a file or a directory
@@ -109,6 +112,12 @@ public class Main {
         if (mainClass == null || mainClass.isEmpty())
             throw new BuildException("main.class setting is not defined");
 
+        int pos = mainClass.lastIndexOf('.');
+        if (pos < 0)
+            mainPackage = "";
+        else
+            mainPackage = mainClass.substring(0, pos);
+
         version = p.getProperty("version");
         if (version == null || version.isEmpty())
             throw new BuildException("version setting is not defined");
@@ -124,6 +133,14 @@ public class Main {
                 this.jars.add(f);
             }
         }
+
+        String pt = p.getProperty("project.type", "command-line");
+        if (pt.equals("command-line"))
+            this.type = ProjectType.COMMAND_LINE;
+        else if (pt.equals("service"))
+            this.type = ProjectType.SERVICE;
+        else
+            throw new BuildException("Unknown project type: " + pt);
 
         this.buildDir = new File(projectDir, "build");
     }
@@ -179,10 +196,14 @@ public class Main {
         if (freeArgs.length == 1 && freeArgs[0].equals("help")) {
             help(options);
         } else {
-            File btjProperties;
+            File btjProperties = null;
             if (cmd.hasOption("project")) {
-                btjProperties = new File(cmd.getOptionValue("project"))
-                        .getAbsoluteFile();
+                try {
+                    btjProperties = new File(cmd.getOptionValue("project"))
+                            .getAbsoluteFile().getCanonicalFile();
+                } catch (IOException e) {
+                    throwInternal(e);
+                }
                 projectDir = btjProperties.getParentFile();
             } else {
                 btjProperties = new File("btj.properties").getAbsoluteFile();
@@ -252,7 +273,7 @@ public class Main {
         for (File f : jars) {
             cpe = d.createElement("classpathentry");
             cpe.setAttribute("kind", "lib");
-            cpe.setAttribute("path", "build/target/lib/" + f.getName());
+            cpe.setAttribute("path", f.getAbsolutePath().replace('\\', '/'));
 
             /*
              * if (src != null) { cpe.setAttribute("sourcepath", "build/libsrc/"
@@ -311,9 +332,8 @@ public class Main {
         this.projectName = inputText("Enter name for the new project");
         if (this.projectName != null) {
             this.projectDir = new File(projectName).getAbsoluteFile();
+            forceMkDir(new File(projectDir, "src\\" + projectName.toLowerCase()));
             try {
-                FileUtils.forceMkdir(new File(projectDir, "src\\" +
-                        projectName.toLowerCase()));
                 Properties p = new Properties();
                 p.put("project.name", this.projectName);
                 p.put("version", "0.1");
@@ -375,9 +395,9 @@ public class Main {
         if (args != null) {
             String cmd = "\"" + jdkPath + "\\bin\\java.exe\"";
             cmd += " -agentlib:hprof=cpu=samples,file=..\\java.hprof.txt";
-            cmd += " -jar " + projectName + ".jar " + args;
+            cmd += " -jar lib\\" + projectName + ".jar " + args;
 
-            system(cmd, new File(buildDir, "target"));
+            system(cmd, new File(buildDir, "target"), null);
         }
     }
 
@@ -412,9 +432,9 @@ public class Main {
                 this.projectName);
         if (args != null) {
             String cmd = "\"" + jdkPath + "\\bin\\java.exe\"";
-            cmd += " -jar " + projectName + ".jar " + args;
+            cmd += " -jar lib\\" + projectName + ".jar " + args;
 
-            system(cmd, new File(buildDir, "target"));
+            system(cmd, new File(buildDir, "target"), null);
         }
     }
 
@@ -478,37 +498,44 @@ public class Main {
         for (File f : this.jars)
             jars_.add(f.getAbsolutePath());
 
+        // compile .java files
         String cmd = "\"" + jdkPath + "\\bin\\javac.exe\"";
         if (jars.size() != 0)
             cmd += " -cp \"" + join(jars_, ";") + "\"";
         List<String> params = new ArrayList<>();
         buildJavaCFileParams(new File(projectDir, "src"), params);
         cmd += " -d build\\classes " + join(params, " ");
-        system(cmd, projectDir);
+        system(cmd, projectDir, null);
 
-        File targetDir = new File(buildDir, "target");
-        try {
-            FileUtils.forceMkdir(targetDir);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot create the directory " + targetDir + ": " +
-                            e.getMessage()).initCause(e);
-        }
-
+        // create Version.properties
         String path = mainClass.replace('.', '\\');
         File versionFile = new File(
                 new File(buildDir, "classes\\" + path).getParentFile(),
                 "Version.properties");
         write(versionFile, "version=" + version + "\r\n");
 
+        // extract texts
+        /*
+        forceMkDir(new File(buildDir, "po"));
+        File xgettext = new File(this.btjDir, "gettext\\bin\\xgettext.exe");
+        File pot = new File(buildDir, "po\\keys.pot");
+        system("\"" + xgettext.getAbsolutePath() +
+                "\" -ktrc:1c,2 -ktrnc:1c,2,3 -ktr -kmarktr -ktrn:1,2 " +
+                "--from-code=utf-8 " + "-o \"" + pot.getAbsolutePath() + "\" " +
+                join(params, " "), this.projectDir, null);
+        File msgfmt = new File(this.btjDir, "gettext\\bin\\msgfmt.exe");
+        Map<String, String> env = new HashMap<>();
+        env.putAll(System.getenv());
+        env.put("JAVAC", this.jdkPath + "\\bin\\javac.exe");
+        system("\"" + msgfmt.getAbsolutePath() +
+                "\" --java2 -d build\\classes -r " + this.mainPackage +
+                " -l en po\\de.po", this.projectDir, env);
+        */
+
+        File targetDir = new File(buildDir, "target");
+        forceMkDir(targetDir);
         File libDir = new File(targetDir, "lib");
-        try {
-            FileUtils.forceMkdir(libDir);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot create the directory " + libDir + ": " +
-                            e.getMessage()).initCause(e);
-        }
+        forceMkDir(libDir);
 
         File jarFile = new File(libDir, projectName + ".jar");
         OutputStream os;
@@ -564,25 +591,21 @@ public class Main {
         }
 
         File libSrcDir = new File(projectDir, "build\\libsrc");
-        try {
-            FileUtils.forceMkdir(libSrcDir);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot create the directory " + libSrcDir + ": " +
-                            e.getMessage()).initCause(e);
-        }
+        forceMkDir(libSrcDir);
 
         File libJavadocDir = new File(projectDir, "build\\libjavadoc");
-        try {
-            FileUtils.forceMkdir(libJavadocDir);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot create the directory " + libJavadocDir + ": " +
-                            e.getMessage()).initCause(e);
-        }
+        forceMkDir(libJavadocDir);
 
-        String ini = "main.class=" + this.mainClass + "\r\n" +
-                "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
+        String ini;
+        if (this.type == ProjectType.COMMAND_LINE) {
+            ini = "main.class=" + this.mainClass + "\r\n" +
+                    "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
+        } else {
+            ini = "service.class=" + this.mainClass + "\r\n" + "service.id=" +
+                    projectName + "\r\n" + "service.name=" + projectName +
+                    "\r\n" + "service.description=" + projectName + "\r\n" +
+                    "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
+        }
 
         copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4Jc.exe"),
                 new File(targetDir, projectName + "32.exe"));
@@ -607,6 +630,16 @@ public class Main {
             throw (BuildException) new BuildException(
                     "Cannot create the .zip file: " + e.getMessage())
                     .initCause(e);
+        }
+    }
+
+    private void forceMkDir(File dir) throws BuildException {
+        try {
+            FileUtils.forceMkdir(dir);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot create the directory " + dir + ": " +
+                            e.getMessage()).initCause(e);
         }
     }
 
@@ -655,8 +688,16 @@ public class Main {
             params.add(dir.getAbsolutePath() + "\\*.java");
     }
 
-    private static void system(String line, File workingDirectory)
-            throws BuildException {
+    /**
+     * 
+     * @param line
+     * @param workingDirectory
+     * @param env environment. The environment for this process will be used if
+     *            null
+     * @throws BuildException
+     */
+    private static void system(String line, File workingDirectory,
+            Map<String, String> env) throws BuildException {
         System.out.println(line);
         org.apache.commons.exec.CommandLine cmdLine = org.apache.commons.exec.CommandLine
                 .parse(line);
@@ -667,7 +708,7 @@ public class Main {
         executor.setWatchdog(watchdog);
         int code;
         try {
-            code = executor.execute(cmdLine);
+            code = executor.execute(cmdLine, env);
         } catch (IOException e) {
             throw (BuildException) new BuildException("Execution failed: " +
                     e.getMessage()).initCause(e);

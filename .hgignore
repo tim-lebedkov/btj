@@ -6,3 +6,4 @@ syntax: regexp
 ^winrun4j/
 ^install/winrun4j/
 ^example/
+^install/gettext/
