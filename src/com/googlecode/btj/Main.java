@@ -137,8 +137,8 @@ public class Main {
             res = res.getCanonicalFile();
         } catch (IOException e) {
             throw (BuildException) new BuildException(
-                    "Cannot create the canonical version of the path: " +
-                            v + ": " + e.getMessage()).initCause(e);
+                    "Cannot create the canonical version of the path: " + v +
+                            ": " + e.getMessage()).initCause(e);
         }
         return res;
     }
@@ -326,20 +326,18 @@ public class Main {
                 } finally {
                     os.close();
                 }
-                String source = "package " + this.projectName.toLowerCase() +
-                        ";\r\n\r\n" + "public class Main {\r\n" +
-                        "    public static void main(String[] params) {\r\n" +
-                        "        System.out.println(\"Hello, world!\");\r\n" +
-                        "    }\r\n" + "}\r\n";
-                FileUtils.write(
-                        new File(projectDir, "src\\" +
-                                projectName.toLowerCase() + "\\Main.java"),
-                        source);
             } catch (IOException e) {
                 throw (BuildException) new BuildException(
                         "Cannot create the project: " + e.getMessage())
                         .initCause(e);
             }
+            String source = "package " + this.projectName.toLowerCase() +
+                    ";\r\n\r\n" + "public class Main {\r\n" +
+                    "    public static void main(String[] params) {\r\n" +
+                    "        System.out.println(\"Hello, world!\");\r\n" +
+                    "    }\r\n" + "}\r\n";
+            write(new File(projectDir, "src\\" + projectName.toLowerCase() +
+                    "\\Main.java"), source);
         }
     }
 
@@ -477,9 +475,9 @@ public class Main {
             buildClasses.mkdirs();
 
         List<String> jars_ = new ArrayList<>();
-        for (File f: this.jars)
+        for (File f : this.jars)
             jars_.add(f.getAbsolutePath());
-            
+
         String cmd = "\"" + jdkPath + "\\bin\\javac.exe\"";
         if (jars.size() != 0)
             cmd += " -cp \"" + join(jars_, ";") + "\"";
@@ -501,13 +499,7 @@ public class Main {
         File versionFile = new File(
                 new File(buildDir, "classes\\" + path).getParentFile(),
                 "Version.properties");
-        try {
-            FileUtils.write(versionFile, "version=" + version + "\r\n");
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot create the file " + versionFile + ": " +
-                            e.getMessage()).initCause(e);
-        }
+        write(versionFile, "version=" + version + "\r\n");
 
         File libDir = new File(targetDir, "lib");
         try {
@@ -567,13 +559,7 @@ public class Main {
         if (this.jars != null) {
             for (File from : jars) {
                 File to = new File(libDir, from.getName());
-                try {
-                    FileUtils.copyFile(from, to);
-                } catch (IOException e) {
-                    throw (BuildException) new BuildException("Cannot copy " +
-                            from + " to " + to + ": " + e.getMessage())
-                            .initCause(e);
-                }
+                copyFile(from, to);
             }
         }
 
