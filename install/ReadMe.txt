@@ -14,14 +14,17 @@ Expected directory structure:
             See also ivy.xml for Ivy dependencies.
         main.class=<name of the class with main(String[])>
         version=<program version> - current program version
-    (optional) ivysettings.xml - Ivy settings file (<ivysettings>)
-    (optional) ivy.xml - Ivy module and dependencies definition 
-        (<ivy-module version="2.0">)
     (optional) install/ - the contents of this directory will be distributed 
         along the program.
     build/ - temporary directory for the build
     build/classes/ - the .class files will be stored here
     build/target/ - the target application is stored here
+    build/target/<project name>.exe - 64 bit executable
+    build/target/<project name>.ini - WinRun4j settings for the 64 bit 
+        executable
+    build/target/<project name>32.exe - 32 bit executable
+    build/target/<project name>32.ini - WinRun4j settings for the 32 bit 
+        executable
     build/<project name>.zip - zipped distribution
     (optional) resources/ - resource files will be stored in the .jar file
     
