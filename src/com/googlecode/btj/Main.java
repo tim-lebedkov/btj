@@ -304,12 +304,7 @@ public class Main {
                 "        <nature>org.eclipse.jdt.core.javanature</nature>\r\n" +
                 "    </natures>\r\n" + "</projectDescription>\r\n";
         File project = new File(this.projectDir, ".project");
-        try {
-            FileUtils.write(project, txt);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException("Cannot save " + project +
-                    ": " + e.getMessage()).initCause(e);
-        }
+        write(project, txt);
     }
 
     private void create() throws BuildException {
@@ -602,22 +597,14 @@ public class Main {
 
         String ini = "main.class=" + this.mainClass + "\r\n" +
                 "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
-        File iniFile = new File(buildDir, "target\\" + projectName + ".ini");
-        try {
-            FileUtils.write(iniFile, ini);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException("Cannot save " + iniFile +
-                    ": " + e.getMessage()).initCause(e);
-        }
 
-        File from = new File(this.btjDir, "winrun4j\\bin\\WinRun4Jc.exe");
-        File to = new File(targetDir, projectName + ".exe");
-        try {
-            FileUtils.copyFile(from, to);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException("Cannot copy " + from +
-                    " to " + to + ": " + e.getMessage()).initCause(e);
-        }
+        copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4Jc.exe"),
+                new File(targetDir, projectName + "32.exe"));
+        write(new File(buildDir, "target\\" + projectName + "32.ini"), ini);
+
+        copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4J64c.exe"),
+                new File(targetDir, projectName + ".exe"));
+        write(new File(buildDir, "target\\" + projectName + ".ini"), ini);
 
         File zipFile = new File(buildDir, projectName + ".zip");
         try {
@@ -634,6 +621,24 @@ public class Main {
             throw (BuildException) new BuildException(
                     "Cannot create the .zip file: " + e.getMessage())
                     .initCause(e);
+        }
+    }
+
+    private void write(File file, String txt) throws BuildException {
+        try {
+            FileUtils.write(file, txt);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException("Cannot save " + file +
+                    ": " + e.getMessage()).initCause(e);
+        }
+    }
+
+    private void copyFile(File from, File to) throws BuildException {
+        try {
+            FileUtils.copyFile(from, to);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException("Cannot copy " + from +
+                    " to " + to + ": " + e.getMessage()).initCause(e);
         }
     }
 
