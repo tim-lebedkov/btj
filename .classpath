@@ -15,5 +15,5 @@
 	<classpathentry kind="lib" path="C:/Users/t/libs/apache-ivy-2.3.0-rc1/lib/oro-2.0.8.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/jgettext-0.8/jgettext-0.8.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/antlr-2.7.6/antlr-2.7.6.jar"/>
-	<classpathentry kind="output" path="bin"/>
+	<classpathentry kind="output" path="build/classes"/>
 </classpath>
