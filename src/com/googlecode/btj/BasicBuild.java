@@ -24,9 +24,11 @@ import java.util.zip.Deflater;
 import java.util.zip.ZipOutputStream;
 
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.TransformerFactoryConfigurationError;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
@@ -49,7 +51,7 @@ public abstract class BasicBuild {
     private File buildDir;
     private String projectName;
     private String jdkPath;
-    private String mainClass = "example.Main";
+    private String topPackage = "example";
     private List<File> jars = new ArrayList<>();
     private File btjDir;
     private String version;
@@ -88,10 +90,15 @@ public abstract class BasicBuild {
 
         if (new File(this.projectDir, "resources").exists()) {
             cpe = d.createElement("classpathentry");
-            cpe.setAttribute("kind", "src");
+            cpe.setAttribute("kind", "lib");
             cpe.setAttribute("path", "resources");
             classpath.appendChild(cpe);
         }
+
+        cpe = d.createElement("classpathentry");
+        cpe.setAttribute("kind", "lib");
+        cpe.setAttribute("path", "build/props");
+        classpath.appendChild(cpe);
 
         cpe = d.createElement("classpathentry");
         cpe.setAttribute("kind", "con");
@@ -122,13 +129,15 @@ public abstract class BasicBuild {
 
         cpe = d.createElement("classpathentry");
         cpe.setAttribute("kind", "output");
-        cpe.setAttribute("path", "build/classes");
+        cpe.setAttribute("path", "build/eclipseclasses");
         classpath.appendChild(cpe);
 
         File classpathFile = new File(projectDir, ".classpath");
         try {
-            Transformer t = javax.xml.transform.TransformerFactory
-                    .newInstance().newTransformer();
+            TransformerFactory tf = javax.xml.transform.TransformerFactory
+                    .newInstance();
+            Transformer t = tf.newTransformer();
+            t.setOutputProperty(OutputKeys.INDENT, "yes");
             t.transform(new DOMSource(d), new StreamResult(classpathFile));
         } catch (TransformerConfigurationException
                 | TransformerFactoryConfigurationError e) {
@@ -156,6 +165,26 @@ public abstract class BasicBuild {
                 "    </natures>\r\n" + "</projectDescription>\r\n";
         File project = new File(this.projectDir, ".project");
         write(project, txt);
+
+        forceMkDir(new File(this.projectDir, ".settings"));
+
+        try {
+            File f = new File(this.projectDir,
+                    ".settings\\org.eclipse.core.resources.prefs");
+            Properties p = new Properties();
+            if (f.exists()) {
+                FileInputStream is = new FileInputStream(f);
+                p.load(is);
+                is.close();
+            }
+            p.put("eclipse.preferences.version", "1");
+            p.put("encoding/<project>", "UTF-8");
+            FileOutputStream os = new FileOutputStream(f);
+            p.store(os, "");
+            os.close();
+        } catch (IOException e) {
+            BTJUtils.throwBuild(e);
+        }
     }
 
     public void clean() throws BuildException {
@@ -260,27 +289,14 @@ public abstract class BasicBuild {
         if (!buildClasses.exists())
             buildClasses.mkdirs();
 
-        List<String> jars_ = new ArrayList<>();
-        for (File f : this.jars)
-            jars_.add(f.getAbsolutePath());
-
-        // compile .java files
-        String cmd = "\"" + jdkPath + "\\bin\\javac.exe\"";
-        if (jars.size() != 0)
-            cmd += " -cp \"" + join(jars_, ";") + "\"";
         List<String> javaFilesParams = new ArrayList<>();
         buildJavaCFileParams(new File(projectDir, "src"), javaFilesParams);
-        cmd += " -encoding UTF-8 -d build\\classes " +
-                join(javaFilesParams, " ");
-        system(cmd, projectDir, null);
+        compile(javaFilesParams);
 
         // create Version.properties
-        if (this.mainClass != null) {
-            File versionFile = new File(new File(buildDir, "classes\\" +
-                    mainClass.replace('.', '\\')).getParentFile(),
-                    "Version.properties");
-            write(versionFile, "version=" + version + "\r\n");
-        }
+        File versionFile = new File(new File(buildDir, "classes\\" +
+                topPackage.replace('.', '\\')), "Version.properties");
+        write(versionFile, "version=" + version + "\r\n");
 
         extractTexts(javaFilesParams);
 
@@ -288,6 +304,88 @@ public abstract class BasicBuild {
         forceMkDir(targetDir);
         File libDir = new File(targetDir, "lib");
         forceMkDir(libDir);
+
+        jar();
+
+        try {
+            File installDir = new File(projectDir, "install");
+            if (installDir.exists())
+                FileUtils.copyDirectory(installDir, targetDir);
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot copy \"install\" directory: " + e.getMessage())
+                    .initCause(e);
+        }
+
+        if (this.jars != null) {
+            for (File from : jars) {
+                File to = new File(libDir, from.getName());
+                copyFile(from, to);
+            }
+        }
+
+        File libSrcDir = new File(projectDir, "build\\libsrc");
+        forceMkDir(libSrcDir);
+
+        File libJavadocDir = new File(projectDir, "build\\libjavadoc");
+        forceMkDir(libJavadocDir);
+
+        if (this.type == ProjectType.COMMAND_LINE ||
+                this.type == ProjectType.SERVICE) {
+            copyWinRun4jFiles();
+        }
+
+        zip();
+    }
+
+    private void copyWinRun4jFiles() throws BuildException {
+        File targetDir = new File(buildDir, "target");
+        String ini;
+        if (this.type == ProjectType.COMMAND_LINE) {
+            ini = "main.class=" + this.topPackage + ".Main\r\n" +
+                    "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
+        } else {
+            ini = "service.class=" + this.topPackage + ".Main\r\n" +
+                    "service.id=" + projectName + "\r\n" + "service.name=" +
+                    projectName + "\r\n" + "service.description=" +
+                    projectName + "\r\n" + "classpath.1=lib\\*.jar\r\n" +
+                    "log.level=error\r\n";
+        }
+
+        copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4Jc.exe"),
+                new File(targetDir, projectName + "32.exe"));
+        write(new File(buildDir, "target\\" + projectName + "32.ini"), ini);
+
+        copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4J64c.exe"),
+                new File(targetDir, projectName + ".exe"));
+        write(new File(buildDir, "target\\" + projectName + ".ini"), ini);
+    }
+
+    private void zip() throws BuildException {
+        File targetDir = new File(buildDir, "target");
+        OutputStream os;
+        File zipFile = new File(buildDir, projectName + ".zip");
+        try {
+            os = new FileOutputStream(zipFile);
+            ZipOutputStream jar = new ZipOutputStream(os);
+            try {
+                jar.setMethod(JarOutputStream.DEFLATED);
+                jar.setLevel(Deflater.BEST_COMPRESSION);
+                addToJar(targetDir, targetDir, jar, new HashSet<String>());
+            } finally {
+                jar.close();
+            }
+        } catch (IOException e) {
+            throw (BuildException) new BuildException(
+                    "Cannot create the .zip file: " + e.getMessage())
+                    .initCause(e);
+        }
+    }
+
+    private void jar() throws BuildException {
+        File targetDir = new File(buildDir, "target");
+        forceMkDir(targetDir);
+        File libDir = new File(targetDir, "lib");
 
         File jarFile;
         if (this.type == ProjectType.WAR)
@@ -308,7 +406,7 @@ public abstract class BasicBuild {
             if (this.type != ProjectType.LIBRARY &&
                     this.type != ProjectType.WAR) {
                 manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS,
-                        mainClass);
+                        topPackage + ".Main");
             }
             if (cp.length() != 0 && this.type != ProjectType.WAR)
                 manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH,
@@ -334,68 +432,20 @@ public abstract class BasicBuild {
                     "Cannot create the .jar file: " + e.getMessage())
                     .initCause(e);
         }
+    }
 
-        try {
-            File installDir = new File(projectDir, "install");
-            if (installDir.exists())
-                FileUtils.copyDirectory(installDir, targetDir);
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot copy \"install\" directory: " + e.getMessage())
-                    .initCause(e);
-        }
+    private void compile(List<String> javaFilesParams) throws BuildException {
+        List<String> jars_ = new ArrayList<>();
+        for (File f : this.jars)
+            jars_.add(f.getAbsolutePath());
 
-        if (this.jars != null) {
-            for (File from : jars) {
-                File to = new File(libDir, from.getName());
-                copyFile(from, to);
-            }
-        }
-
-        File libSrcDir = new File(projectDir, "build\\libsrc");
-        forceMkDir(libSrcDir);
-
-        File libJavadocDir = new File(projectDir, "build\\libjavadoc");
-        forceMkDir(libJavadocDir);
-
-        if (this.type != ProjectType.LIBRARY) {
-            String ini;
-            if (this.type == ProjectType.COMMAND_LINE) {
-                ini = "main.class=" + this.mainClass + "\r\n" +
-                        "classpath.1=lib\\*.jar\r\n" + "log.level=error\r\n";
-            } else {
-                ini = "service.class=" + this.mainClass + "\r\n" +
-                        "service.id=" + projectName + "\r\n" + "service.name=" +
-                        projectName + "\r\n" + "service.description=" +
-                        projectName + "\r\n" + "classpath.1=lib\\*.jar\r\n" +
-                        "log.level=error\r\n";
-            }
-
-            copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4Jc.exe"),
-                    new File(targetDir, projectName + "32.exe"));
-            write(new File(buildDir, "target\\" + projectName + "32.ini"), ini);
-
-            copyFile(new File(this.btjDir, "winrun4j\\bin\\WinRun4J64c.exe"),
-                    new File(targetDir, projectName + ".exe"));
-            write(new File(buildDir, "target\\" + projectName + ".ini"), ini);
-        }
-
-        File zipFile = new File(buildDir, projectName + ".zip");
-        try {
-            os = new FileOutputStream(zipFile);
-            ZipOutputStream jar = new ZipOutputStream(os);
-            try {
-                jar.setMethod(JarOutputStream.DEFLATED);
-                jar.setLevel(Deflater.BEST_COMPRESSION);
-                addToJar(targetDir, targetDir, jar, new HashSet<String>());
-            } finally {
-                jar.close();
-            }
-        } catch (IOException e) {
-            throw (BuildException) new BuildException(
-                    "Cannot create the .zip file: " + e.getMessage())
-                    .initCause(e);
-        }
+        // compile .java files
+        String cmd = "\"" + jdkPath + "\\bin\\javac.exe\"";
+        if (jars.size() != 0)
+            cmd += " -cp \"" + join(jars_, ";") + "\"";
+        cmd += " -encoding UTF-8 -d build\\classes " +
+                join(javaFilesParams, " ");
+        system(cmd, projectDir, null);
     }
 
     /**
@@ -412,10 +462,11 @@ public abstract class BasicBuild {
                 "--from-code=utf-8 " + "-o \"" + pot.getAbsolutePath() + "\" " +
                 join(params, " "), this.projectDir, null);
         File propsDir = new File(buildDir, "props\\" +
-                getMainPackage().replace('.', '\\'));
+                topPackage.replace('.', '\\'));
         forceMkDir(propsDir);
-        write(new File(propsDir, "i18n.properties"), "basename=" +
-                getMainPackage() + ".Messages\r\n");
+        write(new File(propsDir, "i18n.properties"), "basename=" + topPackage +
+                ".Messages\r\n");
+        write(new File(propsDir, "Messages.properties"), "");
 
         // msgmerge
         File projectPODir = new File(this.projectDir, "po");
@@ -440,7 +491,8 @@ public abstract class BasicBuild {
                     Iterator<Message> it = c.iterator();
                     while (it.hasNext()) {
                         Message m = it.next();
-                        if (!m.getMsgid().isEmpty() && !m.isFuzzy())
+                        if (!m.getMsgid().trim().isEmpty() && !m.isFuzzy() &&
+                                !m.getMsgstr().isEmpty())
                             p.put(m.getMsgid(), m.getMsgstr());
                     }
                     FileOutputStream os = new FileOutputStream(new File(
@@ -541,16 +593,6 @@ public abstract class BasicBuild {
             throw new BuildException("Process returned the code" + code);
     }
 
-    private String getMainPackage() {
-        String mainPackage;
-        int pos = mainClass.lastIndexOf('.');
-        if (pos < 0)
-            mainPackage = "";
-        else
-            mainPackage = mainClass.substring(0, pos);
-        return mainPackage;
-    }
-
     private String readResource(String name) throws IOException {
         InputStream is = Main.class.getResourceAsStream(name);
         String r;
@@ -581,13 +623,9 @@ public abstract class BasicBuild {
         else
             throw new BuildException("Unknown project type: " + pt);
 
-        if (this.type != ProjectType.LIBRARY) {
-            mainClass = p.getProperty("main.class");
-            if (mainClass == null || mainClass.isEmpty())
-                throw new BuildException("main.class setting is not defined");
-        } else {
-            this.mainClass = null;
-        }
+        topPackage = p.getProperty("top.package");
+        if (topPackage == null || topPackage.isEmpty())
+            throw new BuildException("top.package setting is not defined");
 
         version = p.getProperty("version");
         if (version == null || version.isEmpty())
@@ -623,8 +661,7 @@ public abstract class BasicBuild {
             p.put("project.name", this.projectName);
             p.put("version", "0.1");
             p.put("jdk", "<please enter the path to the JDK here>");
-            if (type != ProjectType.LIBRARY)
-                p.put("main.class", this.projectName.toLowerCase() + ".Main");
+            p.put("top.package", this.projectName.toLowerCase());
             p.put("project.type", ProjectType.toString(this.type));
             OutputStream os = new FileOutputStream(new File(projectDir,
                     "btj.properties"));

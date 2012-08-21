@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
 	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="src" path="resources"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JDK 1.7.0.4"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/commons-exec 1.1"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/commons-io 2.4"/>
@@ -15,5 +14,7 @@
 	<classpathentry kind="lib" path="C:/Users/t/libs/apache-ivy-2.3.0-rc1/lib/oro-2.0.8.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/jgettext-0.8/jgettext-0.8.jar"/>
 	<classpathentry kind="lib" path="C:/Users/t/libs/antlr-2.7.6/antlr-2.7.6.jar"/>
-	<classpathentry kind="output" path="build/classes"/>
+	<classpathentry kind="lib" path="build/props"/>
+	<classpathentry kind="lib" path="resources"/>
+	<classpathentry kind="output" path="build/eclipseclasses"/>
 </classpath>

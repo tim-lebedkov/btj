@@ -17,9 +17,10 @@ Expected directory structure:
         jdk=<path to the JDK> - defines the JDK that should be used
         jars=<list of paths to the .jar files> - libraries for this program.
             See also ivy.xml for Ivy dependencies.
-        main.class=<class name> - full name of the 
-            class with "public static void main(String[])". This setting is not
-            used for a library or a .war file.
+        top.package=<Java package name> - full name of the top package where
+            all classes reside. The class "Main" in this package should
+            have the "public static void main(String[])" (only for command line
+            based projects).
         version=<program version> - current program version
     (optional) resources/ - resources (images, .properties, etc.) that will
         be stored in the .jar file

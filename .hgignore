@@ -7,3 +7,4 @@ syntax: regexp
 ^install/winrun4j/
 ^example/
 ^install/gettext/
+^examplelib/
