@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.Console;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.List;
 
 /**
  * Utilities.
@@ -71,5 +72,15 @@ public class BTJUtils {
      */
     public static void throwBuild(Exception e) throws BuildException {
         throw (BuildException) new BuildException(e.getMessage()).initCause(e);
+    }
+
+    static String join(List<String> params, String delimiter) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : params) {
+            if (sb.length() != 0)
+                sb.append(delimiter);
+            sb.append(p);
+        }
+        return sb.toString();
     }
 }

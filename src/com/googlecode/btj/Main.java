@@ -135,13 +135,15 @@ public class Main {
                     }
                 }
 
+                System.out.println("Using project file " + btjProperties);
                 Properties props = loadSettings(btjProperties);
                 String type = props.getProperty("project.type", "command-line");
                 ProjectType t = BTJUtils.parseProjectType(type);
                 if (t == null)
-                    throw new BuildException("Unknown project type: " + type);
+                    throw new BuildException("_Unknown project type: " + type);
 
                 BasicBuild bb = createBuild(t);
+                System.out.println("Build " + bb);
 
                 bb.setProjectDir(projectDir);
                 bb.setBTJDir(btjDir);

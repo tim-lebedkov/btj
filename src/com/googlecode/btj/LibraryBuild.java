@@ -10,6 +10,13 @@ import java.util.Properties;
  * Build for libraries.
  */
 public class LibraryBuild extends BasicBuild {
+    /**
+     * -
+     */
+    public LibraryBuild() {
+        setType(ProjectType.LIBRARY);
+    }
+
     @Override
     public void profile() throws BuildException {
         throw new BuildException("Cannot profile a library");
@@ -19,6 +26,18 @@ public class LibraryBuild extends BasicBuild {
     public void run_() throws BuildException {
         throw new BuildException("Cannot run a library");
     }
+
+    /*
+     * private void javadoc(List<String> javaFilesParams) throws BuildException
+     * { List<File> jars = getJars(); List<String> jars_ = new ArrayList<>();
+     * for (File f : jars) jars_.add(f.getAbsolutePath());
+     * 
+     * // compile .java files String cmd = "\"" + getJDKPath() +
+     * "\\bin\\javadoc.exe\""; if (jars.size() != 0) cmd += " -cp \"" +
+     * BTJUtils.join(jars_, ";") + "\""; cmd +=
+     * " -encoding UTF-8 -d build\\classes " + BTJUtils.join(javaFilesParams,
+     * " "); system(cmd, getProjectDir(), null); }
+     */
 
     @Override
     public void create() throws BuildException {

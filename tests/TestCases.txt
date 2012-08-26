@@ -1,0 +1,23 @@
+1. creating a command line based application
+ - btj create
+ - Project name: examplecl
+ => a new project should be created successfully
+2. clean a command line based application
+ - change to clapp/
+ - btj clean
+ => the directory build/ should be deleted
+3. package a command line based application
+ - change to clapp/
+ - btj
+ => the directory build/target should contain the complete application
+4. profile a command line based application
+ - change to clapp/
+ - btj profile
+ - no arguments should be used
+ => the file build/java.hprof.txt should contain the profiling information
+5. Eclipse support files
+ - change to clapp/
+ - btj eclipse
+ - open the project in Eclipse
+ => no errors should be shown by Eclipse in this project
+

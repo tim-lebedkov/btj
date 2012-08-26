@@ -8,3 +8,5 @@ syntax: regexp
 ^example/
 ^install/gettext/
 ^examplelib/
+^tests/clapp/build/
+^tests/webapp/build/
